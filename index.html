@@ -628,7 +628,7 @@ body.light .sheet-handle{background:rgba(23,25,39,.18);}
       </div>
 
       <div class="backup-row glass">
-        <span class="txt">Export your mods as <code>mods.json</code> to update your public store on Vercel.</span>
+        <span class="txt"><span id="backup-txt">Export your mods as <code>mods.json</code> to update your public store on Vercel.</span></span>
         <span class="btns">
           <button class="file-btn" type="button" onclick="exportMods()">Export mods.json</button>
           <label class="file-btn">Import<input id="import-mods-file" type="file" accept=".json,application/json" style="display:none;" onchange="importMods(event)"></label>
@@ -664,8 +664,24 @@ body.light .sheet-handle{background:rgba(23,25,39,.18);}
 <div class="toast" id="toast"></div>
 <div id="save-status" class="glass-pill">● Saved</div>
 
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script>
 const ADMIN_PASSCODE = "bpmods2026";
+
+/* ---------- Firebase ---------- */
+// Paste your Firebase web app config from console.firebase.google.com (Project settings > Your apps).
+// Leave blank to keep using static mods.json + browser storage (no backend).
+const FIREBASE_CONFIG = { apiKey:"", authDomain:"", projectId:"", storageBucket:"", messagingSenderId:"", appId:"" };
+const USE_FIREBASE = !!(FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.projectId);
+let db = null;
+if (USE_FIREBASE) {
+  firebase.initializeApp(FIREBASE_CONFIG);
+  db = firebase.firestore();
+  // Rules allow writes for signed-in users; anonymous sign-in is enough.
+  firebase.auth().signInAnonymously().catch(e => console.warn('Anonymous auth failed:', e));
+}
 let MODS = [];
 let currentCategory = "All";
 let editingId = null;
@@ -723,6 +739,13 @@ function normalizeMod(m){
 }
 
 async function loadMods(){
+  if(USE_FIREBASE){
+    db.collection('mods').onSnapshot(snap=>{
+      MODS = snap.docs.map(d=>({id:d.id, ...d.data()})).map(normalizeMod);
+      renderAll();
+    }, err=>{ console.warn('Firestore load failed:', err); MODS = []; renderAll(); });
+    return;
+  }
   try {
     let remoteMods = [];
     try {
@@ -755,6 +778,19 @@ async function loadMods(){
 }
 
 async function saveMods(){
+  if(USE_FIREBASE){
+    // ponytail: full-collection resync per save — fine for a small store; switch to
+    // per-doc writes (doc(id).set / .delete) if it grows past ~100 mods or many visitors.
+    try{
+      const batch = db.batch();
+      const col = db.collection('mods');
+      const existing = await col.get();
+      existing.forEach(d=>batch.delete(d.ref));
+      MODS.forEach(m=>batch.set(col.doc(m.id), m));
+      await batch.commit();
+      return true;
+    }catch(e){ console.warn('Firestore save failed:', e); showToast('Could not save to Firebase', true); return false; }
+  }
   const payload = JSON.stringify(MODS);
   let saved = false;
   try{
@@ -1158,14 +1194,14 @@ async function submitMod(){
     m.badges=pendingBadges.slice();
     if(pendingLogo) m.logo = pendingLogo;
     if(pendingShots.length) m.screenshots = pendingShots.slice();
-    showToast('Mod updated locally — Export mods.json to update live site');
+    showToast(USE_FIREBASE ? 'Mod updated — live for everyone' : 'Mod updated locally — Export mods.json to update live site');
   } else {
     MODS.push({
       id: uid(), name, description: desc, link, category, version, size, status, featured, notes, changelog,
       logo: pendingLogo || '', screenshots: pendingShots.slice(), badges: pendingBadges.slice(),
       downloads: 0, rating: {sum:0,count:0}, dateAdded: Date.now()
     });
-    showToast('Mod published locally — Export mods.json to update live site');
+    showToast(USE_FIREBASE ? 'Mod published — live for everyone' : 'Mod published locally — Export mods.json to update live site');
   }
   await saveMods();
   cancelEdit();
@@ -1291,6 +1327,9 @@ function renderAdminList(){
 }
 
 function renderAll(){
+  if(USE_FIREBASE){
+    document.getElementById('backup-txt').innerHTML = 'Firebase connected — every change is live for all visitors instantly. Export <code>mods.json</code> as a backup only.';
+  }
   renderHome();
   renderSearch();
   if(document.getElementById('screen-favorites').classList.contains('active')) renderFavorites();
