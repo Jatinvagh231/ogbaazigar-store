@@ -726,7 +726,8 @@ async function loadMods(){
   try {
     let remoteMods = [];
     try {
-      const res = await fetch('./mods.json');
+      // ponytail: cache-bust so every visitor gets the latest mod list on any host
+      const res = await fetch('./mods.json?t=' + Date.now());
       if (res.ok) {
         const json = await res.json();
         if (Array.isArray(json)) {
