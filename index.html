@@ -628,9 +628,9 @@ body.light .sheet-handle{background:rgba(23,25,39,.18);}
       </div>
 
       <div class="backup-row glass">
-        <span class="txt"><span id="backup-txt">Export your mods as <code>mods.json</code> to update your public store on Vercel.</span></span>
+        <span class="txt"><span id="backup-txt">Download a backup of your mods — import it anytime to restore.</span></span>
         <span class="btns">
-          <button class="file-btn" type="button" onclick="exportMods()">Export mods.json</button>
+          <button class="file-btn" type="button" onclick="exportMods()">Export backup</button>
           <label class="file-btn">Import<input id="import-mods-file" type="file" accept=".json,application/json" style="display:none;" onchange="importMods(event)"></label>
         </span>
       </div>
@@ -747,29 +747,10 @@ async function loadMods(){
     return;
   }
   try {
-    let remoteMods = [];
-    try {
-      // ponytail: cache-bust so every visitor gets the latest mod list on any host
-      const res = await fetch('./mods.json?t=' + Date.now());
-      if (res.ok) {
-        const json = await res.json();
-        if (Array.isArray(json)) {
-          remoteMods = json.map(normalizeMod);
-        }
-      }
-    } catch(e) {
-      console.warn('Could not fetch mods.json:', e);
-    }
-
     const rawLocal = localStorage.getItem(storageKey());
     const localMods = rawLocal ? JSON.parse(rawLocal).map(normalizeMod) : [];
 
-    // Merge: remote mods first, local overrides second
-    const combinedMap = new Map();
-    remoteMods.forEach(m => combinedMap.set(m.id, m));
-    localMods.forEach(m => combinedMap.set(m.id, m));
-
-    MODS = Array.from(combinedMap.values());
+    MODS = localMods;
   } catch(e) {
     console.warn('Error loading mods:', e);
     MODS = [];
@@ -1283,8 +1264,8 @@ async function importMods(event){
     MODS = data.map(normalizeMod);
     if(await saveMods()){
       renderAll();
-      setSaveStatus('mods.json imported');
-      showToast('mods.json imported');
+      setSaveStatus('backup imported');
+      showToast('Backup imported');
     }
   }catch(e){
     showToast('Invalid JSON file',true);
@@ -1328,7 +1309,7 @@ function renderAdminList(){
 
 function renderAll(){
   if(USE_FIREBASE){
-    document.getElementById('backup-txt').innerHTML = 'Firebase connected — every change is live for all visitors instantly. Export <code>mods.json</code> as a backup only.';
+    document.getElementById('backup-txt').innerHTML = 'Firebase connected — every change is live for all visitors instantly. Export a backup file anytime.';
   }
   renderHome();
   renderSearch();
